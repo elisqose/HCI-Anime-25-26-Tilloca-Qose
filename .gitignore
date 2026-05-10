@@ -1,5 +1,6 @@
-# CSV files
+# Large data files
 *.csv
+*.pkl
 
 # Virtual environment
 venv/
