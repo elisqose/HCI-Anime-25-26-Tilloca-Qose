@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import plotly.express as px
 
-DATA_PATH  = '../datasets_cleaned/'
+DATA_PATH  = '../../datasets_cleaned/'
 MAIN_TYPES = ['TV', 'Movie', 'OVA', 'ONA']
 TYPE_COLORS = {'TV': '#2196F3', 'Movie': '#FF5722', 'OVA': '#4CAF50', 'ONA': '#FF9800'}
 
