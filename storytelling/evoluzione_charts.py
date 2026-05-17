@@ -1,0 +1,486 @@
+import datetime
+import pandas as pd
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+import plotly.express as px
+
+DATA_PATH  = '../datasets_cleaned/'
+MAIN_TYPES = ['TV', 'Movie', 'OVA', 'ONA']
+TYPE_COLORS = {'TV': '#2196F3', 'Movie': '#FF5722', 'OVA': '#4CAF50', 'ONA': '#FF9800'}
+
+
+def load_data(data_path=DATA_PATH):
+    """Carica i tre dataset principali (details, profiles, ratings) e ne stampa le dimensioni."""
+    details  = pd.read_csv(data_path + 'details_clean.csv')
+    profiles = pd.read_csv(data_path + 'profiles_clean.csv')
+    ratings  = pd.read_csv(data_path + 'ratings_clean.csv')
+    print('details: ', details.shape)
+    print('profiles:', profiles.shape)
+    print('ratings: ', ratings.shape)
+    return details, profiles, ratings
+
+
+def explode_genres(details):
+    """Esplode la colonna 'genres' (lista come stringa) in righe singole per genere.
+    Ritorna details_ex (mal_id | genre) e top_genres (indice ordinato per frequenza)."""
+    details_ex = (
+        details
+        .assign(genre=details['genres'].str[2:-2].str.split("', '"))
+        .explode('genre')
+    )
+    details_ex = details_ex[details_ex['genre'].str.strip() != ''][['mal_id', 'genre']]
+    top_genres = details_ex['genre'].value_counts().index
+    return details_ex, top_genres
+
+
+def filter_main_types(details):
+    """Filtra details ai 4 formati principali (TV, Movie, OVA, ONA) e
+    popola la colonna 'year' usando start_date dove mancante."""
+    details = details[details['type'].isin(MAIN_TYPES)].copy().reset_index(drop=True)
+    details['year'] = details['year'].fillna(
+        pd.to_datetime(details['start_date'], utc=True, errors='coerce').dt.year
+    )
+    print(f'details filtrato: {len(details):,} titoli  →  {MAIN_TYPES}')
+    return details
+
+
+def _max_year(details):
+    """Ritorna l'anno massimo disponibile nel dataset, escludendo l'anno corrente (dati incompleti)."""
+    return int(min(details['year'].dropna().max(), datetime.datetime.now().year - 1))
+
+
+def plot_type_distribution(details):
+    """Bar chart orizzontale (matplotlib) del numero di titoli per formato (TV, Movie, OVA, ecc.)."""
+    type_counts = details['type'].value_counts().reset_index()
+    type_counts.columns = ['type', 'count']
+    type_counts['pct'] = type_counts['count'] / type_counts['count'].sum() * 100
+
+    type_labels = {
+        'TV':         'Serie TV',
+        'Movie':      'Film',
+        'OVA':        'OVA (home video)',
+        'ONA':        'ONA (piattaforme digitali)',
+        'Music':      'Video musicali',
+        'Special':    'Special',
+        'TV Special': 'TV Special',
+        'CM':         'Spot pubblicitari',
+        'PV':         'Promotional Video',
+    }
+    type_counts['label'] = type_counts['type'].map(type_labels).fillna(type_counts['type'])
+
+    palette = [
+        '#2196F3', '#FF5722', '#4CAF50', '#FF9800',
+        '#9C27B0', '#009688', '#795548', '#607D8B', '#E91E63',
+    ]
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    bars = ax.barh(
+        type_counts['label'][::-1], type_counts['count'][::-1],
+        color=palette[:len(type_counts)][::-1], edgecolor='white',
+    )
+    for bar, (_, row) in zip(bars, type_counts[::-1].iterrows()):
+        ax.text(
+            bar.get_width() + 60, bar.get_y() + bar.get_height() / 2,
+            f"{row['count']:,}  ({row['pct']:.1f}%)",
+            va='center', fontsize=9,
+        )
+    ax.set_xlabel('Numero di titoli', fontsize=12)
+    ax.set_title('Composizione del catalogo MAL per formato\n', fontsize=13, fontweight='bold')
+    ax.spines[['top', 'right']].set_visible(False)
+    ax.set_xlim(0, type_counts['count'].max() * 1.28)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_format_evolution(details):
+    """Line chart Plotly dell'andamento annuale dei 4 formati principali dal 1990 ad oggi."""
+    details_plot = details.copy()
+    details_plot['year'] = details_plot['year'].fillna(
+        pd.to_datetime(details_plot['start_date'], utc=True, errors='coerce').dt.year
+    )
+    max_yr = _max_year(details_plot)
+
+    type_year = (
+        details_plot
+        .dropna(subset=['year'])
+        .query('type in @MAIN_TYPES and year >= 1990 and year <= @max_yr')
+        .groupby(['year', 'type'])
+        .size()
+        .reset_index(name='count')
+    )
+
+    fig = go.Figure()
+    for t in MAIN_TYPES:
+        d = type_year[type_year['type'] == t].sort_values('year')
+        fig.add_trace(go.Scatter(
+            x=d['year'], y=d['count'],
+            mode='lines+markers', name=t,
+            line=dict(color=TYPE_COLORS[t], width=2.2),
+            marker=dict(size=5),
+            hovertemplate='<b>%{fullData.name}</b><br>Anno: %{x:.0f}<br>Titoli: %{y}<extra></extra>',
+        ))
+
+    fig.update_layout(
+        title=dict(
+            text=(
+                f"Evoluzione della produzione per formato (1990–{max_yr})<br>"
+                "<sup>L'ONA cresce con lo streaming, l'OVA declina dopo il picco degli anni '90</sup>"
+            ),
+            font=dict(size=15),
+        ),
+        xaxis=dict(title='Anno', tickformat='d'),
+        yaxis=dict(title='Numero di titoli prodotti'),
+        legend=dict(font=dict(size=11)),
+        hovermode='x unified',
+        template='plotly_white',
+        width=980, height=480,
+    )
+    fig.show()
+
+
+def plot_genre_pie(details_ex):
+    """Donut chart Plotly con la distribuzione percentuale dei top 15 generi nel catalogo."""
+    genre_totals = (
+        details_ex['genre']
+        .value_counts()
+        .reset_index()
+        .rename(columns={'index': 'genre', 'count': 'count'})
+        .head(15)
+    )
+
+    fig = go.Figure(go.Pie(
+        labels=genre_totals['genre'],
+        values=genre_totals['count'],
+        hole=0.35,
+        textinfo='label+percent',
+        hovertemplate='<b>%{label}</b><br>Titoli: %{value:,}<br>%{percent}<extra></extra>',
+        textfont=dict(size=11),
+    ))
+    fig.update_layout(
+        title=dict(
+            text='Distribuzione dei titoli per genere (top 15)<br>'
+                 '<sup>Basato sui 4 formati principali: TV, Movie, OVA, ONA</sup>',
+            font=dict(size=15),
+        ),
+        legend=dict(font=dict(size=11), orientation='v'),
+        width=800, height=550,
+    )
+    fig.show()
+
+
+def plot_genre_animation(details, details_ex, top_genres):
+    """Bar chart orizzontale animato (Plotly) con la quota % degli 8 generi top anno per anno.
+    Include slider e pulsanti Play/Pausa; stampa anche il genere dominante prima e dopo il sorpasso."""
+    max_yr = _max_year(details)
+
+    genre_year = (
+        details_ex
+        .merge(details[['mal_id', 'year']], on='mal_id')
+        .dropna(subset=['year'])
+        .query('year >= 1990 and year <= @max_yr')
+        .query('genre in @top_genres')
+        .groupby(['year', 'genre'])
+        .size()
+        .reset_index(name='count')
+    )
+
+    top8 = details_ex['genre'].value_counts().head(8).index
+    pivot_abs = (
+        genre_year
+        .query('genre in @top8')
+        .pivot(index='year', columns='genre', values='count')
+        .fillna(0)[top8]
+    )
+    pivot_pct = pivot_abs.div(pivot_abs.sum(axis=1), axis=0) * 100
+
+    dominant        = pivot_pct.idxmax(axis=1)
+    genre_before    = dominant.iloc[0]
+    genre_after     = dominant.value_counts().drop(genre_before, errors='ignore').idxmax()
+    switchover_year = int(dominant[dominant == genre_after].index.min())
+    print(f'Genere dominante prima del {switchover_year}: {genre_before}')
+    print(f'Genere dominante dal {switchover_year}: {genre_after}')
+
+    palette = dict(zip(top8, px.colors.qualitative.Set2[:len(top8)]))
+    years   = sorted(pivot_pct.index.astype(int))
+    x_max   = pivot_pct.values.max() * 1.18
+
+    def make_bar(year):
+        row = pivot_pct.loc[year].sort_values(ascending=True)
+        return go.Bar(
+            x=row.values.round(2), y=list(row.index),
+            orientation='h',
+            marker_color=[palette[g] for g in row.index],
+            text=[f'{v:.1f}%' for v in row.values],
+            textposition='outside', cliponaxis=False,
+            hovertemplate='<b>%{y}</b><br>Quota: %{x:.1f}%<extra></extra>',
+        )
+
+    frames = [go.Frame(data=[make_bar(y)], name=str(y)) for y in years]
+    fig    = go.Figure(data=[make_bar(years[0])], frames=frames)
+
+    fig.update_layout(
+        title=dict(
+            text=(
+                f'Quota % per genere nella produzione anime — ogni anno la classifica cambia<br>'
+                f'<sup>Dal {switchover_year} "{genre_after}" supera "{genre_before}" e non torna più indietro</sup>'
+            ),
+            font=dict(size=15),
+        ),
+        xaxis=dict(title='% del totale annuo', range=[0, x_max], ticksuffix='%', fixedrange=True),
+        yaxis=dict(title='', fixedrange=True),
+        template='plotly_white',
+        width=900, height=480,
+        showlegend=False,
+        updatemenus=[dict(
+            type='buttons', showactive=False, y=1.15, x=0.0, xanchor='left',
+            buttons=[
+                dict(label='▶  Play', method='animate',
+                     args=[None, dict(frame=dict(duration=300, redraw=True),
+                                      fromcurrent=True,
+                                      transition=dict(duration=200, easing='cubic-in-out'))]),
+                dict(label='⏸  Pausa', method='animate',
+                     args=[[None], dict(frame=dict(duration=0, redraw=False),
+                                        mode='immediate',
+                                        transition=dict(duration=0))]),
+            ],
+        )],
+        sliders=[dict(
+            active=0,
+            currentvalue=dict(prefix='Anno: ', font=dict(size=13)),
+            pad=dict(t=10),
+            steps=[
+                dict(method='animate', label=str(y),
+                     args=[[str(y)], dict(frame=dict(duration=300, redraw=True),
+                                          mode='immediate',
+                                          transition=dict(duration=200))])
+                for y in years
+            ],
+        )],
+    )
+    fig.show()
+
+
+def plot_gender_genres(ratings, profiles, details_ex, top_genres):
+    """Grouped bar chart Plotly della distribuzione dei generi anime per genere utente
+    (Male, Female, Non-Binary), calcolata sugli anime con status 'completed'."""
+    profiles_gen = profiles.loc[profiles['gender'].isin(['Male', 'Female', 'Non-Binary'])]
+    r_gen = (
+        ratings
+        .query("status == 'completed'")
+        .merge(profiles_gen[['username', 'gender']], on='username')
+    )
+
+    counts_gen = (
+        r_gen
+        .merge(details_ex, left_on='anime_id', right_on='mal_id')
+        .query('genre in @top_genres')
+        .groupby(['gender', 'genre'])
+        .size()
+        .reset_index(name='count')
+    )
+    counts_gen['pct'] = (
+        counts_gen['count']
+        / counts_gen.groupby('gender')['count'].transform('sum')
+        * 100
+    )
+
+    pivot_gen = (
+        counts_gen
+        .pivot(index='genre', columns='gender', values='pct')
+        .fillna(0)
+        .sort_values('Female', ascending=False)
+    )
+
+    groups = [('Female', '#e07b8a'), ('Non-Binary', '#8e6bbf'), ('Male', '#5c8ee0')]
+    fig = go.Figure()
+    for col, color in groups:
+        if col not in pivot_gen.columns:
+            continue
+        fig.add_trace(go.Bar(
+            name=col,
+            x=pivot_gen.index.tolist(),
+            y=pivot_gen[col].round(2),
+            marker_color=color,
+            hovertemplate='<b>%{x}</b><br>' + col + ': %{y:.2f}%<extra></extra>',
+        ))
+
+    fig.update_layout(
+        barmode='group',
+        title=dict(
+            text='Distribuzione dei generi per genere utente (solo anime completati)<br>',
+            font=dict(size=15),
+        ),
+        xaxis=dict(title='Genere Anime', tickangle=-40),
+        yaxis=dict(title='% sul totale completato per gruppo', ticksuffix='%'),
+        legend=dict(title='Genere utente', font=dict(size=11)),
+        template='plotly_white',
+        hovermode='x unified',
+        width=1000, height=520,
+    )
+    fig.show()
+
+
+def plot_generation_radar(ratings, profiles, details_ex, top_genres):
+    """Spider/radar chart Plotly con il profilo dei generi completati per generazione
+    (Boomer, Gen X, Millennial, Gen Z), classificate tramite l'anno di nascita."""
+    profiles_bday = profiles.dropna(subset=['birthday']).copy()
+    profiles_bday['birth_year'] = pd.to_numeric(profiles_bday['birthday'], errors='coerce')
+    profiles_bday = profiles_bday.dropna(subset=['birth_year'])
+
+    bins   = [0, 1945, 1964, 1980, 1996, 2012, 9999]
+    labels = ['Silent', 'Boomer', 'Gen X', 'Millennial', 'Gen Z', 'Gen Alpha']
+    profiles_bday['generation'] = pd.cut(profiles_bday['birth_year'], bins=bins, labels=labels)
+
+    gen_focus  = ['Boomer', 'Gen X', 'Millennial', 'Gen Z']
+    gen_colors = {'Boomer': '#e07b3a', 'Gen X': '#8e6bbf', 'Millennial': '#5c8ee0', 'Gen Z': '#4caf7d'}
+
+    r_cohort = (
+        ratings
+        .query("status == 'completed'")
+        .merge(
+            profiles_bday.loc[profiles_bday['generation'].isin(gen_focus), ['username', 'generation']],
+            on='username',
+        )
+    )
+
+    counts_cohort = (
+        r_cohort
+        .merge(details_ex, left_on='anime_id', right_on='mal_id')
+        .query('genre in @top_genres')
+        .groupby(['generation', 'genre'])
+        .size()
+        .reset_index(name='count')
+    )
+    counts_cohort['pct'] = (
+        counts_cohort['count']
+        / counts_cohort.groupby('generation')['count'].transform('sum')
+        * 100
+    )
+
+    all_genres = list(top_genres)
+    gen_pivot  = (
+        counts_cohort
+        .pivot(index='generation', columns='genre', values='pct')
+        .fillna(0)
+        .reindex(gen_focus)[all_genres]
+    )
+
+    categories = all_genres + [all_genres[0]]
+    fig = go.Figure()
+    for gen in gen_focus:
+        values = gen_pivot.loc[gen].tolist() + [gen_pivot.loc[gen].tolist()[0]]
+        fig.add_trace(go.Scatterpolar(
+            r=values, theta=categories,
+            fill='toself', fillcolor=gen_colors[gen],
+            line=dict(color=gen_colors[gen], width=2),
+            opacity=0.25, name=gen,
+            hovertemplate='<b>' + gen + '</b><br>%{theta}: %{r:.2f}%<extra></extra>',
+        ))
+
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(visible=True, ticksuffix='%', tickfont=dict(size=9), gridcolor='lightgrey'),
+            angularaxis=dict(tickfont=dict(size=10)),
+        ),
+        title=dict(
+            text='Profilo dei generi completati per generazione<br>'
+                 '<sup>Ogni asse rappresenta un genere — più lontano dal centro, più quel genere pesa sul totale completato</sup>',
+            font=dict(size=15),
+        ),
+        legend=dict(font=dict(size=11)),
+        template='plotly_white',
+        width=800, height=800,
+    )
+    fig.show()
+
+
+def plot_country_map(ratings, profiles, details_ex, top_genres):
+    """Mappa coropleta Plotly che mostra per ogni paese il genere con la deviazione positiva
+    più alta rispetto alla media globale. L'hover mostra i top 5 generi distintivi."""
+    top_countries = profiles['location'].dropna().value_counts().index
+    profiles_loc  = profiles.loc[profiles['location'].isin(top_countries), ['username', 'location']]
+
+    counts_country = (
+        ratings
+        .query("status == 'completed'")
+        .merge(profiles_loc, on='username')
+        .merge(details_ex, left_on='anime_id', right_on='mal_id')
+        .query('genre in @top_genres')
+        .groupby(['location', 'genre'])
+        .size()
+        .reset_index(name='count')
+    )
+    counts_country['pct'] = (
+        counts_country['count']
+        / counts_country.groupby('location')['count'].transform('sum')
+        * 100
+    )
+
+    global_avg = counts_country.groupby('genre')['pct'].mean()
+    counts_country['deviation'] = counts_country.apply(
+        lambda row: row['pct'] - global_avg[row['genre']], axis=1
+    )
+
+    country_deviation = (
+        counts_country
+        .pivot(index='location', columns='genre', values='deviation')
+        .fillna(0)[top_genres]
+    )
+    country_deviation = country_deviation.loc[
+        country_deviation.abs().sum(axis=1).sort_values(ascending=False).index
+    ]
+
+    iso_map = pd.Series({
+        'Japan': 'JPN', 'United States': 'USA', 'Germany': 'DEU',
+        'United Kingdom': 'GBR', 'Thailand': 'THA', 'Argentina': 'ARG',
+        'China': 'CHN', 'Spain': 'ESP', 'France': 'FRA', 'Australia': 'AUS',
+        'Mexico': 'MEX', 'South Korea': 'KOR', 'Turkey': 'TUR', 'Italy': 'ITA',
+        'Indonesia': 'IDN', 'Brazil': 'BRA', 'Vietnam': 'VNM', 'South Africa': 'ZAF',
+        'Philippines': 'PHL', 'Egypt': 'EGY', 'India': 'IND', 'Canada': 'CAN',
+    })
+
+    def top5_deviation(country):
+        if country not in country_deviation.index:
+            return [''] * 5, [0.0] * 5
+        row = country_deviation.loc[country].sort_values(ascending=False).head(5)
+        return list(row.index), list(row.values)
+
+    map_data = (
+        country_deviation
+        .idxmax(axis=1)
+        .reset_index()
+        .rename(columns={'location': 'country', 0: 'dominant_genre'})
+        .assign(iso=lambda df: df['country'].map(iso_map))
+        .dropna(subset=['iso'])
+    )
+    for k in range(5):
+        map_data[f'g{k+1}']   = map_data['country'].apply(lambda c: top5_deviation(c)[0][k])
+        map_data[f'dev{k+1}'] = map_data['country'].apply(lambda c: round(top5_deviation(c)[1][k], 2))
+
+    fig = px.choropleth(
+        map_data,
+        locations='iso', color='dominant_genre', hover_name='country',
+        color_discrete_sequence=px.colors.qualitative.Set2,
+        title='Genere più guardato rispetto alla media globale per paese (utenti MAL)',
+        labels={'dominant_genre': 'Genere più sopra media'},
+        custom_data=['g1','dev1','g2','dev2','g3','dev3','g4','dev4','g5','dev5'],
+    )
+    fig.update_traces(
+        hovertemplate=(
+            '<b>%{hovertext}</b><br><br>'
+            'Generi più sopra la media globale:<br>'
+            '1. %{customdata[0]}: %{customdata[1]:+.2f}%<br>'
+            '2. %{customdata[2]}: %{customdata[3]:+.2f}%<br>'
+            '3. %{customdata[4]}: %{customdata[5]:+.2f}%<br>'
+            '4. %{customdata[6]}: %{customdata[7]:+.2f}%<br>'
+            '5. %{customdata[8]}: %{customdata[9]:+.2f}%'
+            '<extra></extra>'
+        )
+    )
+    fig.update_layout(
+        geo=dict(showframe=False, showcoastlines=True, projection_type='natural earth'),
+        legend_title_text='Genere più sopra media',
+        margin=dict(l=0, r=0, t=40, b=0),
+        height=500,
+    )
+    fig.show()
