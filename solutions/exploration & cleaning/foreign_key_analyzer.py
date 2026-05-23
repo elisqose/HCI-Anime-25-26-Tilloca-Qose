@@ -5,23 +5,32 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-#  Layout helpers (stesso stile di dataset_analyzer) 
+#  Layout helpers
 
 WIDTH = 80
 
 def _hr():
+    """Stampa una riga orizzontale separatrice larga WIDTH caratteri."""
     print("─" * WIDTH)
 
 def _section(text):
+    """Stampa un'intestazione di sezione: riga vuota, titolo e separatore."""
     print()
     print(text)
     _hr()
     print()
 
 def _kv(key, value, key_width=35):
+    """Stampa una coppia chiave-valore allineando la chiave a key_width caratteri."""
     print(f"  {key:<{key_width}} {value}")
 
 def _fmt(x):
+    """
+    Formatta un valore numerico per la stampa:
+    - int  → separatore delle migliaia
+    - float → 4 decimali con migliaia
+    - altro → conversione diretta a str
+    """
     if isinstance(x, (int, np.integer)):
         return f"{x:,}"
     if isinstance(x, float):
@@ -37,28 +46,34 @@ def check_fk(
     child_df: pd.DataFrame = None,
     sample_rows: int = 10,
 ) -> pd.Series:
+    """
+    Verifica l'integrità referenziale di una chiave esterna (FK → PK).
 
+    Per ogni valore non-null di `child` controlla se esiste in `parent`. Le righe mancanti sono dette "orfane".
+    """
     child_name  = child.name  or "FK"
     parent_name = parent.name or "PK"
 
-    # ── Intestazione ────────────────────────────────────────────────────────
+    # Intestazione
     print()
     _kv("Colonna FK  (tabella figlia)",  str(child_name))
     _kv("Colonna PK  (tabella padre)",   str(parent_name))
     _hr()
 
-    # ── Preparazione ────────────────────────────────────────────────────────
-    valid_pks   = set(parent.dropna().unique())
-    total       = len(child)
-    n_null_fk   = child.isna().sum()
-    n_valid_fk  = child.notna().sum()
+    # Preparazione
+    valid_pks   = set(parent.dropna().unique()) #  Costruisce un set di tutti i valori PK validi
+    total       = len(child)                    #  numero totale di righe nella tabella figlia
+    n_null_fk   = child.isna().sum()            # quante FK sono null
+    n_valid_fk  = child.notna().sum()           # quante FK non sono null
 
-    mask_orphan = child.notna() & ~child.isin(valid_pks)
-    n_orphan    = mask_orphan.sum()
-    n_ok        = n_valid_fk - n_orphan
-
-    orphan_ids  = sorted(child[mask_orphan].unique())
-    n_uniq_orphan = len(orphan_ids)
+    mask_orphan = child.notna() & ~child.isin(valid_pks) # Crea la maschera booleana delle righe orfane.
+    # Una riga è orfana se:
+    # child.notna() — la FK non è null (non possiamo dire che sia orfana se è null
+    # ~child.isin(valid_pks) — il valore FK non è presente tra i PK validi
+    n_orphan    = mask_orphan.sum()   # numero di righe orfane
+    n_ok        = n_valid_fk - n_orphan # righe con FK non-null e valida = non-null totali meno orfane
+    orphan_ids  = sorted(child[mask_orphan].unique()) # lista ordinata dei valori FK orfani distinti
+    n_uniq_orphan = len(orphan_ids) #quanti ID orfani distinti ci sono
 
     #  Riepilogo conteggi 
     _section("Riepilogo conteggi")
@@ -94,29 +109,11 @@ def check_pk_referenced(
     parent_df: pd.DataFrame = None,
     sample_rows: int = 10,
 ) -> pd.Series:
-    """
-    Controllo inverso rispetto a check_fk.
-
-    Verifica quali valori della PK (tabella padre) sono referenziati
-    da almeno una delle tabelle figlie fornite.
-
-    Parametri
-    ---------
-    parent   : Series con i valori PK da controllare (es. gli ID anomali)
-    children : dict { nome_tabella: Series_FK } — le colonne FK delle tabelle figlie
-    parent_df: DataFrame padre opzionale, usato per stampare un campione
-               delle righe non referenziate
-    sample_rows: numero di righe nel campione
-
-    Ritorna
-    -------
-    mask_unreferenced : maschera booleana True sulle righe di parent_df
-                        i cui ID non compaiono in nessuna tabella figlia
-    """
+    """Controllo inverso rispetto a check_fk: verifica quali valori PK della tabella padre non sono referenziati da nessuna tabella figlia."""
 
     parent_name = parent.name or "PK"
 
-    # ── Intestazione ────────────────────────────────────────────────────────
+    # Intestazione
     print()
     _kv("Colonna PK  (tabella padre)", str(parent_name))
     _kv("Tabelle figlie verificate",   ", ".join(children.keys()))
@@ -125,7 +122,7 @@ def check_pk_referenced(
     pk_values = set(parent.dropna().unique())
     total_pk  = len(pk_values)
 
-    # ── Conteggio per tabella figlia ─────────────────────────────────────────
+    # Conteggio per tabella figlia
     _section("Referenze per tabella figlia")
     referenced_union = set()
 
@@ -136,7 +133,7 @@ def check_pk_referenced(
         referenced_union |= found
         _kv(f"  {name}", f"{_fmt(n_found)} / {_fmt(total_pk)} ID trovati  ({n_found/total_pk*100:.1f}%)")
 
-    # ── Riepilogo globale ────────────────────────────────────────────────────
+    # Riepilogo globale
     _section("Riepilogo globale")
     n_referenced   = len(referenced_union)
     n_unreferenced = total_pk - n_referenced
@@ -144,7 +141,7 @@ def check_pk_referenced(
     _kv("✓  Referenziati in almeno 1 figlia", f"{_fmt(n_referenced)}  ({n_referenced/total_pk*100:.1f}%)")
     _kv("✗  Non referenziati in nessuna",     f"{_fmt(n_unreferenced)}  ({n_unreferenced/total_pk*100:.1f}%)")
 
-    # ── ID non referenziati ──────────────────────────────────────────────────
+    # ID non referenziati
     unreferenced_ids = sorted(pk_values - referenced_union)
     if unreferenced_ids:
         _section("ID non referenziati (rimovibili in sicurezza)")
@@ -158,7 +155,7 @@ def check_pk_referenced(
         _section("ID non referenziati")
         print("  Tutti gli ID sono referenziati in almeno una tabella figlia.")
 
-    # ── Campione righe non referenziate ─────────────────────────────────────
+    # Campione righe non referenziate
     mask_unreferenced = parent.isin(unreferenced_ids)
     if parent_df is not None and mask_unreferenced.any():
         _section(f"Campione righe non referenziate (prime {min(sample_rows, mask_unreferenced.sum())})")
