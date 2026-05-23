@@ -9,15 +9,15 @@ MAIN_TYPES = ['TV', 'Movie', 'OVA', 'ONA']
 TYPE_COLORS = {'TV': '#2196F3', 'Movie': '#FF5722', 'OVA': '#4CAF50', 'ONA': '#FF9800'}
 
 def explode_genres(details):
-    """Esplode la colonna 'genres' in righe singole per genere. Ritorna details_ex e top_genres."""
+    """Esplode la colonna 'genres' in righe singole per genere. Ritorna details_ex e generi."""
     details_ex = (
         details.assign(genre=details['genres'].str[2:-2].str.split("', '")) # ogni lista di generi diventa righe separate
         .explode('genre')
     )
 
     details_ex = details_ex[details_ex['genre'].str.strip() != ''][['mal_id', 'genre']] # rimuove eventuali generi vuoti e tiene solo le colonne necessarie
-    top_genres = details_ex['genre'].value_counts().index     # indice dei generi ordinato per frequenza decrescente
-    return details_ex, top_genres
+    generi = details_ex['genre'].value_counts().index     # indice dei generi ordinato per frequenza decrescente
+    return details_ex, generi
 
 
 def filter_main_types(details):
@@ -153,8 +153,7 @@ def plot_genre_pie(details_ex):
     ))
     fig.update_layout(
         title=dict(
-            text='Distribuzione dei titoli per genere (top 15)<br>'
-                 '<sup>Basato sui 4 formati principali: TV, Movie, OVA, ONA</sup>',
+            text='Distribuzione dei titoli per genere<br>',
             font=dict(size=15),
         ),
         legend=dict(font=dict(size=11), orientation='v'),
@@ -162,9 +161,9 @@ def plot_genre_pie(details_ex):
     )
     fig.show()
 
-
-def plot_genre_animation(details, details_ex, top_genres):
-    """Bar chart orizzontale animato (Plotly) con la quota % degli 8 generi top anno per anno.
+# Funzione per creare grafico animato del cambiamento di ogni genere per anno
+def plot_genre_animation(details, details_ex, generi):
+    """Bar chart orizzontale animato con la quota % degli 8 generi top anno per anno.
     Include slider e pulsanti Play/Pausa; stampa anche il genere dominante prima e dopo il sorpasso."""
     max_yr = _max_year(details)
 
@@ -174,7 +173,7 @@ def plot_genre_animation(details, details_ex, top_genres):
         .merge(details[['mal_id', 'year']], on='mal_id')
         .dropna(subset=['year'])
         .query('year >= 1990 and year <= @max_yr')
-        .query('genre in @top_genres')
+        .query('genre in @generi')
         .groupby(['year', 'genre'])
         .size()
         .reset_index(name='count')
@@ -190,16 +189,6 @@ def plot_genre_animation(details, details_ex, top_genres):
     )
     # normalizza per anno: divide ogni cella per il totale della riga → quota percentuale
     pivot_pct = pivot_abs.div(pivot_abs.sum(axis=1), axis=0) * 100
-
-    # trova il genere con quota massima per ogni anno
-    dominant     = pivot_pct.idxmax(axis=1)
-    genre_before = dominant.iloc[0]   # genere dominante nel primo anno disponibile
-    # secondo genere più frequentemente dominante (esclude genre_before)
-    genre_after     = dominant.value_counts().drop(genre_before, errors='ignore').idxmax()
-    # primo anno in cui genre_after diventa dominante
-    switchover_year = int(dominant[dominant == genre_after].index.min())
-    print(f'Genere dominante prima del {switchover_year}: {genre_before}')
-    print(f'Genere dominante dal {switchover_year}: {genre_after}')
 
     # associa un colore a ciascuno degli 8 generi usando la palette Set2 di Plotly
     palette = dict(zip(top8, px.colors.qualitative.Set2[:len(top8)]))
@@ -224,20 +213,16 @@ def plot_genre_animation(details, details_ex, top_genres):
 
     fig.update_layout(
         title=dict(
-            text=(
-                f'Quota % per genere nella produzione anime — ogni anno la classifica cambia<br>'
-                f'<sup>Dal {switchover_year} "{genre_after}" supera "{genre_before}" e non torna più indietro</sup>'
-            ),
+            text='Quota percentuale per genere nella produzione anime',
             font=dict(size=15),
         ),
-        xaxis=dict(title='% del totale annuo', range=[0, x_max], ticksuffix='%', fixedrange=True),
+        xaxis=dict(title='Percentuale del totale annuo', range=[0, x_max], ticksuffix='%', fixedrange=True),
         yaxis=dict(title='', fixedrange=True),
         template='plotly_white',
         width=900, height=480,
         showlegend=False,
-        # pulsanti Play e Pausa sopra al grafico
         updatemenus=[dict(
-            type='buttons', showactive=False, y=1.15, x=0.0, xanchor='left',
+            type='buttons', showactive=False, y=0.5, x=1.05, xanchor='left', yanchor='middle',
             buttons=[
                 dict(label='▶  Play', method='animate',
                      args=[None, dict(frame=dict(duration=300, redraw=True),
@@ -266,7 +251,7 @@ def plot_genre_animation(details, details_ex, top_genres):
     fig.show()
 
 
-def plot_gender_genres(ratings, profiles, details_ex, top_genres):
+def plot_gender_genres(ratings, profiles, details_ex, generi):
     """Grouped bar chart Plotly della distribuzione dei generi anime per genere utente
     (Male, Female, Non-Binary), calcolata sugli anime con status 'completed'."""
     # filtra i profili con genere esplicito (esclude 'Non-Disclosed' e valori null)
@@ -282,7 +267,7 @@ def plot_gender_genres(ratings, profiles, details_ex, top_genres):
     counts_gen = (
         r_gen
         .merge(details_ex, left_on='anime_id', right_on='mal_id')
-        .query('genre in @top_genres')
+        .query('genre in @generi')
         .groupby(['gender', 'genre'])
         .size()
         .reset_index(name='count')
@@ -331,7 +316,7 @@ def plot_gender_genres(ratings, profiles, details_ex, top_genres):
     fig.show()
 
 
-def plot_generation_radar(ratings, profiles, details_ex, top_genres):
+def plot_generation_radar(ratings, profiles, details_ex, generi):
     """Spider/radar chart Plotly con il profilo dei generi completati per generazione
     (Boomer, Gen X, Millennial, Gen Z), classificate tramite l'anno di nascita."""
     # estrae l'anno di nascita come numero, scartando le righe non convertibili
@@ -361,7 +346,7 @@ def plot_generation_radar(ratings, profiles, details_ex, top_genres):
     counts_cohort = (
         r_cohort
         .merge(details_ex, left_on='anime_id', right_on='mal_id')
-        .query('genre in @top_genres')
+        .query('genre in @generi')
         .groupby(['generation', 'genre'])
         .size()
         .reset_index(name='count')
@@ -372,7 +357,7 @@ def plot_generation_radar(ratings, profiles, details_ex, top_genres):
         * 100
     )
 
-    all_genres = list(top_genres)
+    all_genres = list(generi)
     # pivot: righe = generazione, colonne = genere, riordinato secondo gen_focus
     gen_pivot  = (
         counts_cohort
@@ -412,7 +397,7 @@ def plot_generation_radar(ratings, profiles, details_ex, top_genres):
     fig.show()
 
 
-def plot_country_map(ratings, profiles, details_ex, top_genres):
+def plot_country_map(ratings, profiles, details_ex, generi):
     """Mappa coropleta Plotly che mostra per ogni paese il genere con la deviazione positiva
     più alta rispetto alla media globale. L'hover mostra i top 5 generi distintivi."""
     top_countries = profiles['location'].dropna().value_counts().index
@@ -424,7 +409,7 @@ def plot_country_map(ratings, profiles, details_ex, top_genres):
         .query("status == 'completed'")
         .merge(profiles_loc, on='username')
         .merge(details_ex, left_on='anime_id', right_on='mal_id')
-        .query('genre in @top_genres')
+        .query('genre in @generi')
         .groupby(['location', 'genre'])
         .size()
         .reset_index(name='count')
@@ -447,7 +432,7 @@ def plot_country_map(ratings, profiles, details_ex, top_genres):
     country_deviation = (
         counts_country
         .pivot(index='location', columns='genre', values='deviation')
-        .fillna(0)[top_genres]
+        .fillna(0)[generi]
     )
     # ordina i paesi per "distintività" totale (somma dei valori assoluti delle deviazioni)
     country_deviation = country_deviation.loc[
