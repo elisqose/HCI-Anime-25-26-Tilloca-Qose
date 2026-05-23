@@ -5,49 +5,57 @@ from collections import Counter
 import warnings
 warnings.filterwarnings("ignore")
 
-# Layout helpers
+# Helpers di layout
 
 WIDTH = 80
 
 def _hr():
+    """Stampa una linea orizzontale separatrice."""
     print("─" * WIDTH)
 
 def _section(text):
+    """Stampa un titolo di sezione seguito da una linea orizzontale."""
     print()
     print(text)
     _hr()
     print()
 
 def _kv(key, value, key_width=30):
+    """Stampa una coppia chiave-valore allineata in colonne fisse."""
     print(f"  {key:<{key_width}} {value}")
 
 
-# Core helpers
+# Formatta un numero in modo leggibile:
 
 def _fmt(x, decimals=4):
+    """Formatta un numero con separatore delle migliaia e decimali adattivi."""
     if isinstance(x, float):
-        if abs(x) >= 1_000_000:
+        if abs(x) >= 1_000_000:    # Se è un float ≥ 1.000.000 → niente decimali (1,500,000).
             return f"{x:,.0f}"
-        if abs(x) >= 1_000:
+        if abs(x) >= 1_000:      # Se è un float ≥ 1.000 → 2 decimali (1,234.56).
             return f"{x:,.2f}"
-        return f"{x:.{decimals}f}"
+        return f"{x:.{decimals}f}"      # Altrimenti → usa il numero di decimali specificato (default 4).
     if isinstance(x, (int, np.integer)):
-        return f"{x:,}"
-    return str(x)
+        return f"{x:,}"    # Se è un intero → separatore delle migliaia ma niente decimali (42,000)
+    return str(x)     #  Qualsiasi altra cosa → conversione a stringa semplice.
 
 def _is_numeric(series):
+    """Restituisce True se la serie ha dtype numerico."""
     return pd.api.types.is_numeric_dtype(series)
 
 def _is_string(series):
+    """Restituisce True se la serie ha dtype stringa o oggetto."""
     return pd.api.types.is_string_dtype(series) or pd.api.types.is_object_dtype(series)
 
 def _outlier_bounds_iqr(series):
+    """Calcola i limiti inferiore e superiore per la rilevazione degli outlier con il metodo IQR."""
     q1 = series.quantile(0.25)
     q3 = series.quantile(0.75)
     iqr = q3 - q1
     return q1 - 1.5 * iqr, q3 + 1.5 * iqr
 
 def _display(text: str) -> str:
+    """Sostituisce i caratteri di newline con un simbolo visivo per la stampa su riga singola."""
     return text.replace('\r\n', '↵ ').replace('\r', '↵ ').replace('\n', '↵ ')
 
 def _visual_len(s: str) -> int:
@@ -59,9 +67,11 @@ def _visual_len(s: str) -> int:
     return w
 
 def _ljust_visual(s: str, width: int) -> str:
+    """Allinea a sinistra la stringa usando la larghezza visiva."""
     return s + ' ' * max(0, width - _visual_len(s))
 
 def _rjust_visual(s: str, width: int) -> str:
+    """Allinea a destra la stringa usando la larghezza visiva."""
     return ' ' * max(0, width - _visual_len(s)) + s
 
 def _row_str(df, idx, skip_col=None, max_str_len=40):
@@ -98,7 +108,7 @@ def _example_idx(sv, val):
     return matches[0] if len(matches) else None
 
 def _example_idx_containing(sv, word):
-    """Restituisce il primo indice dove sv contiene la parola word (come token)."""
+    """Restituisce il primo indice dove sv contiene la parola word."""
     pattern = r'(?<!\w)' + word + r'(?!\w)'
     matches = sv[sv.str.contains(pattern, regex=True, na=False)].index
     return matches[0] if len(matches) else None
@@ -106,9 +116,9 @@ def _example_idx_containing(sv, word):
 def _print_table(headers, rows, alignments=None, max_str_width=50):
     """Stampa una tabella testuale con intestazioni e righe di dati."""
     if alignments is None:
-        alignments = ['l'] * len(headers)
+        alignments = ['l'] * len(headers) # Se non vengono specificate le direzioni di allineamento, allinea tutto a sinistra per default.
 
-    def fmt_cell(val):
+    def fmt_cell(val):   #   Converte un valore di cella in stringa
         if val is None:
             return ""
         try:
@@ -125,11 +135,11 @@ def _print_table(headers, rows, alignments=None, max_str_width=50):
             return _fmt(val)
         return str(val)
 
-    str_rows = [[fmt_cell(v) for v in row] for row in rows]
+    str_rows = [[fmt_cell(v) for v in row] for row in rows]    #   Converte tutte le celle in stringhe.
     widths = [max(_visual_len(h), max((_visual_len(r[i]) for r in str_rows), default=0))
               for i, h in enumerate(headers)]
 
-    def fmt_row(cells):
+    def fmt_row(cells):    #   Formatta una riga: allinea ogni cella (destra o sinistra) e separa le colonne con 3 spazi.
         parts = []
         for i, cell in enumerate(cells):
             w = widths[i]
@@ -141,10 +151,10 @@ def _print_table(headers, rows, alignments=None, max_str_width=50):
     for row in str_rows:
         print(fmt_row(row))
 
-
 # ANALISI NUMERICA
 
 def _analyze_numeric(s: pd.Series, df=None):
+    """Stampa statistiche descrittive, outlier, distribuzione e valori estremi per una serie numerica."""
 
     _section("Conteggi di base")
     total  = len(s)
@@ -163,12 +173,13 @@ def _analyze_numeric(s: pd.Series, df=None):
     _kv("Negativi",           f"{_fmt(n_neg)}   ({n_neg/total*100:.2f}%)")
     _kv("Valori unici",       f"{_fmt(n_uniq)}  ({n_uniq/total*100:.2f}%)")
 
-    sv = s.dropna()
+    sv = s.dropna()    #   Crea una versione senza null. Se è vuota, si ferma.
     if sv.empty:
         print("  Nessun valore valido da analizzare.")
         return
 
-    if s.dtype == np.float64 or s.dtype == np.float32:
+    if s.dtype == np.float64 or s.dtype == np.float32: #   Se la serie è float, conta quanti valori hanno effettivamente una parte decimale.
+
         n_float = int((sv % 1 != 0).sum())
         _kv("Valori float", _fmt(n_float))
 
@@ -210,7 +221,8 @@ def _analyze_numeric(s: pd.Series, df=None):
 
     # Analisi outlier
 
-    _section("Analisi outlier")
+    _section("Analisi outlier") #   Chiama _outlier_bounds_iqr per avere i limiti, poi filtra i valori fuori da quei limiti. Se ci sono outlier, mostra i 5 più estremi in valore assoluto con il loro contesto dalla riga del DataFrame.
+
     lo_iqr, hi_iqr = _outlier_bounds_iqr(sv)
     out_iqr = sv[(sv < lo_iqr) | (sv > hi_iqr)]
 
@@ -229,7 +241,7 @@ def _analyze_numeric(s: pd.Series, df=None):
 
     # Distribuzione
 
-    _section("Distribuzione")
+    _section("Distribuzione")   #  Divide i valori in al massimo 20 fasce e stampa quanti valori cadono in ciascuna fascia con la relativa percentuale.
     bins = min(20, n_uniq)
     counts, edges = np.histogram(sv.values, bins=bins)
     total_valid = counts.sum()
@@ -245,7 +257,7 @@ def _analyze_numeric(s: pd.Series, df=None):
 
     # Valori estremi
 
-    _section("Valori estremi")
+    _section("Valori estremi")   #   Stampa i 10 valori più grandi e i 10 più piccoli.
     top10    = sv.nlargest(10)
     bottom10 = sv.nsmallest(10)
 
@@ -266,7 +278,7 @@ def _analyze_numeric(s: pd.Series, df=None):
 
     # Valori più e meno frequenti
 
-    _section("Valori più e meno frequenti")
+    _section("Valori più e meno frequenti")   #   Conta quante volte compare ogni valore distinto e stampa i 10 più frequenti e i 10 meno frequenti.
 
     vc = sv.value_counts()
 
@@ -298,6 +310,7 @@ def _analyze_numeric(s: pd.Series, df=None):
 # ANALISI TESTUALE
 
 def _analyze_string(s: pd.Series, df=None):
+    """Stampa statistiche su lunghezze, frequenze, pattern e parole per una serie testuale."""
 
     _section("Conteggi di base")
     total   = len(s)
@@ -430,7 +443,7 @@ def _analyze_string(s: pd.Series, df=None):
     _kv("Solo alfanumerico",          f"{_fmt(all_alphanum)}")
 
 
-    # Analisi parole / token (solo se multi-parola)
+    # Analisi parole
 
     avg_words = sv.str.split().str.len().mean()
     if avg_words > 1.5:
@@ -452,7 +465,8 @@ def _analyze_string(s: pd.Series, df=None):
 # API PUBBLICA
 
 def analyze(series: pd.Series, name: str | None = None, df: pd.DataFrame | None = None) -> None:
-    
+    """Analizza una pd.Series e stampa un report completo (numerico o testuale in base al dtype)."""
+
     if not isinstance(series, pd.Series):
         raise TypeError(f"Atteso un pandas Series, ricevuto {type(series).__name__}")
 
