@@ -157,7 +157,7 @@ def plot_genre_pie(details_ex):
             font=dict(size=15),
         ),
         legend=dict(font=dict(size=11), orientation='v'),
-        width=800, height=550,
+        width=1000, height=750,
     )
     fig.show()
 
@@ -250,10 +250,9 @@ def plot_genre_animation(details, details_ex, generi):
     )
     fig.show()
 
-
+# Funzione per creare grafico generi in base al genere dell'utente
 def plot_gender_genres(ratings, profiles, details_ex, generi):
-    """Grouped bar chart Plotly della distribuzione dei generi anime per genere utente
-    (Male, Female, Non-Binary), calcolata sugli anime con status 'completed'."""
+    """Grouped bar chart Plotly della distribuzione dei generi anime per genere utente (Male, Female, Non-Binary), calcolata sugli anime con status 'completed'."""
     # filtra i profili con genere esplicito (esclude 'Non-Disclosed' e valori null)
     profiles_gen = profiles.loc[profiles['gender'].isin(['Male', 'Female', 'Non-Binary'])]
     # join tra i rating completati e i profili con genere noto
@@ -315,10 +314,9 @@ def plot_gender_genres(ratings, profiles, details_ex, generi):
     )
     fig.show()
 
-
+# Funzione utilizzata per il grafico delle generazioni
 def plot_generation_radar(ratings, profiles, details_ex, generi):
-    """Spider/radar chart Plotly con il profilo dei generi completati per generazione
-    (Boomer, Gen X, Millennial, Gen Z), classificate tramite l'anno di nascita."""
+    """Spider/radar chart Plotly con il profilo dei generi completati per generazione (Boomer, Gen X, Millennial, Gen Z), classificate tramite l'anno di nascita."""
     # estrae l'anno di nascita come numero, scartando le righe non convertibili
     profiles_bday = profiles.dropna(subset=['birthday']).copy()
     profiles_bday['birth_year'] = pd.to_numeric(profiles_bday['birthday'], errors='coerce')
@@ -386,8 +384,7 @@ def plot_generation_radar(ratings, profiles, details_ex, generi):
             angularaxis=dict(tickfont=dict(size=10)),
         ),
         title=dict(
-            text='Profilo dei generi completati per generazione<br>'
-                 '<sup>Ogni asse rappresenta un genere — più lontano dal centro, più quel genere pesa sul totale completato</sup>',
+            text='Profilo dei generi completati per generazione<br>',
             font=dict(size=15),
         ),
         legend=dict(font=dict(size=11)),
