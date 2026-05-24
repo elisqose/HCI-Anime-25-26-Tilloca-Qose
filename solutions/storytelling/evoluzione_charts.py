@@ -393,12 +393,11 @@ def plot_generation_radar(ratings, profiles, details_ex, generi):
     )
     fig.show()
 
-
+# Funzione utilizzata per creare grafico sulla geografia
 def plot_country_map(ratings, profiles, details_ex, generi):
-    """Mappa coropleta Plotly che mostra per ogni paese il genere con la deviazione positiva
-    più alta rispetto alla media globale. L'hover mostra i top 5 generi distintivi."""
-    top_countries = profiles['location'].dropna().value_counts().index
-    profiles_loc  = profiles.loc[profiles['location'].isin(top_countries), ['username', 'location']]
+    """Mappa Plotly che mostra per ogni paese il genere con la deviazione positiva più alta rispetto alla media globale. L'hover mostra i top 5 generi distintivi."""
+    paesi = profiles['location'].dropna().value_counts().index
+    profiles_loc = profiles.loc[profiles['location'].isin(paesi), ['username', 'location']]
 
     # conta le occorrenze per (paese, genere) sugli anime completati
     counts_country = (
@@ -436,7 +435,7 @@ def plot_country_map(ratings, profiles, details_ex, generi):
         country_deviation.abs().sum(axis=1).sort_values(ascending=False).index
     ]
 
-    # dizionario nome paese → codice ISO alpha-3 (richiesto da px.choropleth)
+    # dizionario nome paese → codice ISO
     iso_map = pd.Series({
         'Japan': 'JPN', 'United States': 'USA', 'Germany': 'DEU',
         'United Kingdom': 'GBR', 'Thailand': 'THA', 'Argentina': 'ARG',
@@ -471,8 +470,8 @@ def plot_country_map(ratings, profiles, details_ex, generi):
         map_data,
         locations='iso', color='dominant_genre', hover_name='country',
         color_discrete_sequence=px.colors.qualitative.Set2,
-        title='Genere più guardato rispetto alla media globale per paese (utenti MAL)',
-        labels={'dominant_genre': 'Genere più sopra media'},
+        title='Genere più guardato rispetto alla media globale per paese',
+        labels={'dominant_genre': 'Genere più sopra la media'},
         # custom_data passa i 10 valori (5 generi + 5 deviazioni) al template hover
         custom_data=['g1','dev1','g2','dev2','g3','dev3','g4','dev4','g5','dev5'],
     )
