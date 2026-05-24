@@ -3,7 +3,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-
 def _build_source_stats(details):
     """Calcola aggregati per fonte (n_titoli, score_medio, favorites_medio) e palette colori."""
     source_agg = (
@@ -23,7 +22,6 @@ def _build_source_stats(details):
     palette = px.colors.qualitative.Alphabet[:len(source_agg)]
     color_map = dict(zip(source_agg['source'], palette))
     return source_agg, color_map
-
 
 def plot_genre_map(details):
     """Scatter Plotly: ogni genere posizionato per numero di titoli (X) e score medio (Y)."""
@@ -54,15 +52,15 @@ def plot_genre_map(details):
             'n_titoli': 'Numero di titoli nel genere',
             'score_medio': 'Score medio MAL',
         },
-        title='<b>La mappa dei generi: volume e qualità media per ogni territorio del catalogo</b>',
+        title='<b>La mappa dei generi con volume e qualità media</b>',
     )
 
     fig.update_traces(marker=dict(size=10, line=dict(color='white', width=1)))
 
     custom_offsets = {
         'Girls Love':    dict(xshift=-30, yshift=12),
-        'Boys Love':     dict(xshift=40,  yshift=12),
-        'Gourmet':       dict(xshift=0,   yshift=-18),
+        'Boys Love':     dict(xshift=25,  yshift=12),
+        'Gourmet':       dict(xshift=-25,   yshift=-25),
         'Ecchi':         dict(xshift=-25, yshift=0),
         'Slice of Life': dict(xshift=40,  yshift=0),
         'Comedy':        dict(xshift=12,  yshift=-10),
@@ -77,6 +75,7 @@ def plot_genre_map(details):
             font=dict(size=11), **off,
         )
 
+# Aggiunge una linea orizzontale tratteggiata alla media globale per vedere quali generi sono sopra o sotto la media.
     fig.add_hline(
         y=score_mean, line_dash='dash', line_color='grey', opacity=0.5,
         annotation_text='score medio globale', annotation_position='top right',
@@ -207,7 +206,7 @@ def plot_source_distribution(details):
 
 
 def plot_source_scatter(details):
-    """Scatter Plotly: ogni anime posizionato per n. valutazioni (X, log) e score (Y), colorato per fonte."""
+    """Scatter in cui ogni punto è un anime, posizionato per numero di valutazioni (scala log) e score, colorato per fonte."""
     source_agg, color_map = _build_source_stats(details)
     ndet_src = (
         details
@@ -248,7 +247,7 @@ def plot_drop_heatmap(details, stats):
         .assign(genre=lambda d: d['genres'].str[2:-2].str.split("', '"))
         .explode('genre')
         .pipe(lambda d: d[d['genre'].str.strip() != ''])
-        ['genre'].value_counts().head(12).index.tolist()
+        ['genre'].value_counts().index.tolist()
     )
     main_sources = ['Manga', 'Light novel', 'Visual novel', 'Novel', 'Web manga', 'Game', 'Original']
 
@@ -296,7 +295,7 @@ def plot_drop_heatmap(details, stats):
         xaxis=dict(title='Genere', tickangle=-35),
         yaxis=dict(title='Fonte', autorange='reversed'),
         plot_bgcolor='white', paper_bgcolor='white',
-        height=380,
+        height=550, width = 1100,
     )
     fig.show()
 
