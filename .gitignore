@@ -1,6 +1,8 @@
 # Large data files
 *.csv
 *.pkl
+!datasets/.gitkeep
+!datasets_cleaned/.gitkeep
 
 # Virtual environment
 venv/
