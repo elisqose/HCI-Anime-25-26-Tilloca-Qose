@@ -17,16 +17,3 @@
   1. Inserire i CSV nelle cartelle come indicato sopra
   2. Eseguire i notebook in `solution/exploration & cleaning/` in ordine (01 → 13)
   3. Eseguire i notebook in `solution/storytelling/`
-
-  ## Struttura
-  
-   root/
-  ├── datasets/                        
-  ├── datasets_cleaned/                
-  ├── report/
-  │   ├── report.md                    
-  │   └── self_assessment.xlsx
-  ├── solution/
-  │   ├── exploration & cleaning/      
-  │   └── storytelling/               
-  └── requirements.txt
